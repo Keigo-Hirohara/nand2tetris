@@ -1,0 +1,51 @@
+CHIP CPU {
+  IN inM[16], instruction[16], reset;
+  OUT outM[16], writeM, addressM[15], pc[15];
+  PARTS:
+
+    // 命令文からA命令かどうかを判定する
+    // aInstruction: A命令の場合は1
+    // instruction[15]: C命令の場合は1
+    Not(in=instruction[15], out=aInstruction);
+
+    // 命令分の計算結果をAレジスタに保存するかを判定する(C命令 & dest領域のd1が1)
+    And(a=instruction[15], b=instruction[5], out=setCalcResultToARegister);
+
+    Mux16(a=instruction, b=ALUOutput, sel=setCalcResultToARegister, out=aRegisterInput);
+
+    // A命令: Aレジスタに命令の値をセットする
+    // C命令: 計算結果をAレジスタにセットする
+    // そのどちらかに当てはまっていることを検証できれば、Aレジスタに値をセットするか否かを判定できる
+    Or(a=aInstruction, b=setCalcResultToARegister, out=setToARegister);
+
+    ARegister(in=aRegisterInput, load=setToARegister, out=aRegisterOut);
+
+    // ALUのオペランドとして渡す入力を、Aレジスタの値 or データメモリの値(すなわちCPUの入力で渡ってきたinM)を判定する
+    // C命令のaの値によって、オペランドとして必要なのがAレジスタかデータメモリの値(M)かは仕様で決まっている
+    Mux16(a=aRegisterOut, b=inM, sel=instruction[12], out=ALUOperand);
+
+    // C命令 & 計算結果をDレジスタに保存するか(dest領域のd2が1)を判定
+    And(a=instruction[15], b=instruction[4], out=setToDRegister);
+
+    DRegister(in=ALUOutput, load=setToDRegister, out=dRegisterOut);
+
+    ALU(x=dRegisterOut, y=ALUOperand, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=ALUOutput, zr=ZROut, ng=NGOut);
+
+    Or16(a=false, b=aRegisterOut, out[0..14]=addressM);
+    Or16(a=false, b=ALUOutput, out=outM);
+    
+    // 計算結果をデータメモリに格納するかを判定(dest領域のd3が1)
+    And(a=instruction[15], b=instruction[3], out=writeM);
+
+    // プログラムカウンタの値をインクリメントするのか、Aレジスタに格納されたアドレスへジャンプするのかを判定
+    And(a=ZROut, b=instruction[1], out=jeq);
+    And(a=NGOut, b=instruction[2], out=jlt);
+    Or(a=ZROut, b=NGOut, out=zeroOrNegative);
+    Not(in=zeroOrNegative, out=positive);
+    And(a=positive, b=instruction[0], out=jgt);
+    Or(a=jeq, b=jlt, out=jle);
+    Or(a=jle, b=jgt, out=jumpToA);
+    And(a=instruction[15], b=jumpToA, out=PCLoad);
+    Not(in=PCLoad, out=PCInc);
+    PC(in=aRegisterOut, inc=PCInc, load=PCLoad, reset=reset, out[0..14]=pc);
+}

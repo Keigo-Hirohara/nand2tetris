@@ -1,0 +1,12 @@
+CHIP Computer {
+  IN reset;
+
+  PARTS:
+
+  ROM32K(address=cpuOutPC, out=romOut);
+
+  // TODO: inMにMemoryの出力をセット
+  CPU(inM=memoryOut, instruction=romOut, reset=reset, writeM=cpuOutSetM, outM=cpuOutM, addressM=cpuOutAddressM, pc=cpuOutPC);
+
+  Memory(in=cpuOutM, load=cpuOutSetM, address=cpuOutAddressM, out=memoryOut);
+}
